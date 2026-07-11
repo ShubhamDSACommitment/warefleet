@@ -1,8 +1,18 @@
 # WareFleet
 
-**An open-source multi-robot warehouse fleet-management stack: task allocation, multi-agent path finding (MAPF), and a fault-tolerant distributed coordinator — built by a warehouse-automation engineer.**
+**An open-source research platform for studying autonomous warehouse fleet orchestration under realistic execution conditions.**
 
-> Simulated in ROS 2 + Nav2 + Gazebo. Coordinated by a distributed Go fleet manager. Observed live in Grafana. One command to run the whole thing.
+> Built on ROS 2 + Nav2 + Gazebo, coordinated by a distributed Go fleet manager, observed live in Grafana. One command to run the whole thing.
+
+## Positioning
+
+- **Vision — what it is.** WareFleet is an open-source **research platform** for studying autonomous warehouse fleet orchestration under realistic execution conditions.
+- **Research goal — what I'm investigating.** How realistic execution constraints — congestion, execution delay, and robot failures — influence the effectiveness of task-allocation strategies in autonomous warehouse fleets.
+- **Hypotheses — what I expect.**
+  - **H1** — the task-allocation strategy that performs best under *idealized* simulation does **not** necessarily remain best under *realistic* execution.
+  - **H2** — telemetry-driven, failure-aware reallocation can recover throughput lost by static allocation policies.
+
+> The **platform is the vehicle; the finding is the contribution.** The component breadth (fleet manager, allocation engine, MAPF layer, MQTT, metrics) is evidence of engineering capability — the research claim is **H1/H2**, not the parts.
 
 <!-- Replace with a 30s GIF: robots navigating the warehouse + the Grafana KPI board. This is the single most important asset in the repo. -->
 ![demo](docs/images/demo.gif)
@@ -19,6 +29,8 @@ Modern warehouses run fleets of autonomous mobile robots (AMRs). The hard part i
 …and a third, systems dimension most academic testbeds ignore:
 
 3. **Dependable distributed coordination** — the fleet manager keeps the fleet productive under **robot failures/dropouts**, and we compare **centralized vs. decentralized** coordination.
+
+> 🧭 **Focus:** this project has one North Star — *lifelong, fault-tolerant task-allocation × path-finding*. See [`docs/NORTH-STAR.md`](docs/NORTH-STAR.md) before adding scope.
 
 ## Research question
 
@@ -41,7 +53,7 @@ Orders → Fleet Manager [allocation + MAPF + fault-tolerant coordinator] → RO
 - **N-robot warehouse simulation** (Gazebo world with aisles, shelves, pick/drop stations)
 - **Per-robot autonomy** via ROS 2 **Nav2** (localization, planning, control)
 - **Pluggable task allocation**: greedy · Hungarian (optimal assignment) · market/auction
-- **MAPF coordination layer**: prioritized planning → conflict-based (CBS) / PIBT-style (stretch)
+- **MAPF coordination layer** (lifelong/online): prioritized planning → CBS / PIBT / LaCAM (stretch)
 - **Distributed Fleet Manager (Go)**: task queue, assignment, conflict resolution, **robot-dropout handling**
 - **MQTT** event/telemetry bus (mirrors real WMS↔robot comms)
 - **Prometheus + Grafana** live KPIs: throughput, makespan, utilization, conflicts

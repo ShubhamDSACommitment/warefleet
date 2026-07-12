@@ -6,13 +6,16 @@
 
 ## Positioning
 
-- **Vision — what it is.** WareFleet is an open-source **research platform** for studying autonomous warehouse fleet orchestration under realistic execution conditions.
-- **Research goal — what I'm investigating.** How realistic execution constraints — congestion, execution delay, and robot failures — influence the effectiveness of task-allocation strategies in autonomous warehouse fleets.
-- **Hypotheses — what I expect.**
-  - **H1** — the task-allocation strategy that performs best under *idealized* simulation does **not** necessarily remain best under *realistic* execution.
-  - **H2** — telemetry-driven, failure-aware reallocation can recover throughput lost by static allocation policies.
+- **Vision (theme).** *How do warehouse fleet systems behave under operational constraints, and how can we measure and improve them?* — WareFleet is the open-source **ROS 2 testbed** I use to explore this, **informed by real warehouse deployments** (studied in simulation, not on live warehouses).
+- **Research goal (narrow, testable).** How do **task-allocation strategies** interact with **realistic execution** (congestion, delay, failures) to affect fleet throughput and robustness — the setting LSMART leaves as *random* assignment + centralized control.
+- **Hypotheses (reproductions).**
+  - **H1** — the allocation strategy best under *idealized* simulation is **not** necessarily best under *realistic* execution.
+  - **H2** — telemetry-driven, failure-aware reallocation recovers throughput lost by static allocation.
+- **The one extension ("improve").** A telemetry-driven, failure-aware reallocation policy — grounded in LSMART's *random-assignment + centralized* assumptions and the "evolving systems" challenge.
 
 > The **platform is the vehicle; the finding is the contribution.** The component breadth (fleet manager, allocation engine, MAPF layer, MQTT, metrics) is evidence of engineering capability — the research claim is **H1/H2**, not the parts.
+
+> ⚠️ **Not a novelty claim.** This is an active, well-covered area (e.g. the open-source [LSMART](https://github.com/smart-mapf/lifelong-smart) testbed, and joint scheduling+MAPF+failure simulators). WareFleet is a **learning + demonstration + replication** platform built openly on that prior work — see [`docs/related-work.md`](docs/related-work.md). What's distinctive is the *builder's* warehouse-industry + distributed-systems background, not the algorithms.
 
 <!-- Replace with a 30s GIF: robots navigating the warehouse + the Grafana KPI board. This is the single most important asset in the repo. -->
 ![demo](docs/images/demo.gif)

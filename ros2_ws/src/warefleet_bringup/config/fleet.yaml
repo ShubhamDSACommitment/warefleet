@@ -1,0 +1,11 @@
+# Fleet-level launch parameters (referenced by warehouse.launch.py).
+fleet:
+  default_robots: 4
+  robot_model: turtlebot3_burger   # or the custom diff-drive model in sim/models
+  spawn_spacing_m: 1.0
+  # Initial spawn poses; extend as the fleet grows.
+  spawn_poses:
+    robot_0: {x: 0.0, y: 0.0, yaw: 0.0}
+    robot_1: {x: 1.0, y: 0.0, yaw: 0.0}
+    robot_2: {x: 2.0, y: 0.0, yaw: 0.0}
+    robot_3: {x: 3.0, y: 0.0, yaw: 0.0}

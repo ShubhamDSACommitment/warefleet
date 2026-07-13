@@ -1,0 +1,36 @@
+# ROS 2 / colcon
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Go
+fleet_manager/bin/
+*.exe
+*.test
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Benchmark artifacts (keep committed results in docs/results.md; raw runs are ignored)
+benchmarks/results/*.csv
+benchmarks/results/*.json
+!benchmarks/results/.gitkeep
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Personal notes & MEXT application material — never committed
+docs/LEARNING.md
+private/
+CLAUDE.md
+
+# Sim logs / recordings
+*.bag
+*.mcap
+rosbag2_*/

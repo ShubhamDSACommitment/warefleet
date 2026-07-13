@@ -5,15 +5,13 @@ wiring — reuse Nav2's proven TB3 simulation launch, but point it at OUR
 warehouse world and run SLAM live (so no pre-built map is needed yet).
 
 Run:
-  export TURTLEBOT3_MODEL=waffle
   ros2 launch warefleet_bringup single_robot.launch.py
 
-Then in RViz: "2D Pose Estimate", then "Nav2 Goal" -> watch it plan + drive.
+Then in RViz: "Nav2 Goal" -> watch it plan + drive. (No "2D Pose Estimate" needed:
+SLAM is on, the robot localizes from its spawn pose. TURTLEBOT3_MODEL is not used
+on Jazzy — nav2_bringup spawns its own nav2_minimal_tb3_sim waffle.)
 
-NOTE: nav2_bringup's launch filename/args vary by version. Verify with:
-  ros2 launch nav2_bringup tb3_simulation_launch.py --show-args
-  ls $(ros2 pkg prefix nav2_bringup)/share/nav2_bringup/launch/
-and adjust `TB3_SIM_LAUNCH` / arg names below if needed. We'll iterate on errors.
+Verified working on ROS 2 Jazzy, 2026-07-13 (see README for the headless smoke test).
 """
 import os
 from ament_index_python.packages import get_package_share_directory

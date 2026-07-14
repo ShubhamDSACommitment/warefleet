@@ -34,12 +34,16 @@ type Publisher interface {
 // Coordinator owns fleet state and drives the control loop.
 //
 // Task lifecycle: tasks (pending) --assign--> inflight --heartbeat says done--> completed.
+// A task leaves inflight back to pending when its robot reports an error or
+// drops out (missed heartbeats) — that re-queue is the dependability mechanism
+// under study (H2).
 type Coordinator struct {
 	mu     sync.RWMutex
 	tasks  map[string]model.Task  // pending tasks
 	robots map[string]model.Robot // last-known robot state
 
-	inflight map[string]model.Task // assigned, not yet completed (by task ID)
+	inflight   map[string]model.Task // assigned, not yet completed (by task ID)
+	requeuedAt map[string]time.Time  // when a task was re-queued, for recovery metrics
 
 	alloc     allocation.Strategy
 	planner   Planner
@@ -50,14 +54,15 @@ type Coordinator struct {
 
 func New(alloc allocation.Strategy, planner Planner, pub Publisher, mode Mode) *Coordinator {
 	return &Coordinator{
-		tasks:     make(map[string]model.Task),
-		robots:    make(map[string]model.Robot),
-		inflight:  make(map[string]model.Task),
-		alloc:     alloc,
-		planner:   planner,
-		pub:       pub,
-		mode:      mode,
-		heartbeat: 5 * time.Second,
+		tasks:      make(map[string]model.Task),
+		robots:     make(map[string]model.Robot),
+		inflight:   make(map[string]model.Task),
+		requeuedAt: make(map[string]time.Time),
+		alloc:      alloc,
+		planner:    planner,
+		pub:        pub,
+		mode:       mode,
+		heartbeat:  5 * time.Second,
 	}
 }
 
@@ -70,13 +75,16 @@ func (c *Coordinator) AddTask(t model.Task) {
 }
 
 // UpdateRobot records the latest heartbeat and reacts to state transitions:
-// busy->idle completes the in-flight task.
+// busy->idle completes the in-flight task; an error heartbeat re-queues it.
 func (c *Coordinator) UpdateRobot(r model.Robot) {
 	r.LastSeen = time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	prev, known := c.robots[r.ID]
+	if known && prev.Status == model.StatusOffline {
+		log.Printf("robot %s back online", r.ID)
+	}
 
 	// Completion: the robot was working task X and now reports it gone.
 	if known && prev.CurrentTaskID != "" && r.CurrentTaskID == "" {
@@ -87,6 +95,11 @@ func (c *Coordinator) UpdateRobot(r model.Robot) {
 			log.Printf("task %s completed by %s (makespan %.1fs, inflight=%d)",
 				t.ID, r.ID, time.Since(t.CreatedAt).Seconds(), len(c.inflight))
 		}
+	}
+
+	// Failure: the agent reports an error while holding a task -> re-queue it.
+	if r.Status == model.StatusError && r.CurrentTaskID != "" {
+		c.requeueLocked(r.CurrentTaskID, "robot "+r.ID+" reported error")
 	}
 
 	c.robots[r.ID] = r
@@ -136,6 +149,11 @@ func (c *Coordinator) step() {
 			c.inflight[a.TaskID] = t
 			delete(c.tasks, a.TaskID)
 		}
+		if at, ok := c.requeuedAt[a.TaskID]; ok {
+			metrics.DropoutRecovery.Observe(time.Since(at).Seconds())
+			delete(c.requeuedAt, a.TaskID)
+			log.Printf("task %s recovered %.1fs after re-queue", a.TaskID, time.Since(at).Seconds())
+		}
 		// Mark the robot busy immediately rather than waiting for its next
 		// heartbeat: otherwise a task arriving within the heartbeat interval
 		// would be assigned to the same robot, rejected by the agent, and lost.
@@ -149,10 +167,43 @@ func (c *Coordinator) step() {
 }
 
 // detectDropouts marks robots that missed their heartbeat window as offline and
-// re-queues their in-flight task. This is the dependability KPI in the study (H2).
+// re-queues their in-flight task. This is the dependability KPI in the study.
 func (c *Coordinator) detectDropouts() {
-	// TODO(H2): for each robot, if now-LastSeen > heartbeat and status != offline:
-	//   mark offline, re-queue its in-flight task, record recovery-time metrics.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	active, offline := 0, 0
+	for id, r := range c.robots {
+		if r.Status != model.StatusOffline && time.Since(r.LastSeen) > c.heartbeat {
+			log.Printf("robot %s dropped out (no heartbeat for %.1fs)",
+				id, time.Since(r.LastSeen).Seconds())
+			if r.CurrentTaskID != "" {
+				c.requeueLocked(r.CurrentTaskID, "robot "+id+" dropped out")
+			}
+			r.Status = model.StatusOffline
+			r.CurrentTaskID = ""
+			c.robots[id] = r
+		}
+		if r.Status == model.StatusOffline {
+			offline++
+		} else {
+			active++
+		}
+	}
+	metrics.RobotsActive.Set(float64(active))
+	metrics.RobotsOffline.Set(float64(offline))
+}
+
+// requeueLocked moves an in-flight task back to the pending queue (caller holds mu).
+func (c *Coordinator) requeueLocked(taskID, reason string) {
+	t, ok := c.inflight[taskID]
+	if !ok {
+		return // already completed or already re-queued
+	}
+	delete(c.inflight, taskID)
+	c.tasks[taskID] = t
+	c.requeuedAt[taskID] = time.Now()
+	log.Printf("task %s re-queued (%s)", taskID, reason)
 }
 
 func mapValues[T any](m map[string]T) []T {

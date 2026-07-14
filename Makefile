@@ -1,16 +1,16 @@
 # WareFleet — developer entry points.
 # These wrap the common workflows so the README "quick start" is real.
 
-ROBOTS ?= 4
+ROBOTS ?= 1
+ROBOT ?= robot_0
 SCENARIO ?= benchmarks/scenarios/peak_hour.yaml
 LIMIT ?= 0
-WORLD ?= sim/worlds/warehouse.world
 
 # Every ROS-touching target sources the env itself, so plain `make <target>`
 # works from any fresh terminal.
 ROS_ENV = source /opt/ros/jazzy/setup.bash && source ros2_ws/install/setup.bash
 
-.PHONY: help demo demo-headless stop status logs orders \
+.PHONY: help demo demo-headless stop status logs orders kill-robot revive-robot \
         metrics up down sim build-ros build-go fmt bench clean
 
 help:
@@ -18,6 +18,8 @@ help:
 	@echo "  make demo             - start EVERYTHING (broker, sim+GUI, agent, bridge, fleet manager)"
 	@echo "  make demo-headless    - same, without Gazebo/RViz windows"
 	@echo "  make orders           - stream the order scenario (LIMIT=3 for a short run)"
+	@echo "  make kill-robot       - H2 experiment: simulate a robot dropout mid-task"
+	@echo "  make revive-robot     - bring the robot back online"
 	@echo "  make metrics          - fleet KPIs (tasks completed, makespan, recovery time)"
 	@echo "  make logs             - follow all component logs"
 	@echo "  make status           - what's running"
@@ -30,10 +32,10 @@ help:
 # ---- the one-command flow ---------------------------------------------------
 
 demo:
-	@bash scripts/demo.sh
+	@ROBOTS=$(ROBOTS) bash scripts/demo.sh
 
 demo-headless:
-	@bash scripts/demo.sh --headless
+	@ROBOTS=$(ROBOTS) bash scripts/demo.sh --headless
 
 stop:
 	@bash scripts/stop.sh
@@ -46,6 +48,13 @@ logs:
 
 orders:
 	@bash -c '$(ROS_ENV) && ros2 run warefleet_agent order_feeder --scenario $(SCENARIO) --limit $(LIMIT)'
+
+kill-robot:
+	@pkill -f "[r]obot_id:=$(ROBOT)" && echo "🔌 $(ROBOT) killed — watch .logs/fleet-manager.log for dropout + re-queue" \
+		|| echo "$(ROBOT) not running"
+
+revive-robot:
+	@bash scripts/demo.sh agent-only $(ROBOT)
 
 metrics:
 	@curl -s localhost:2112/metrics | grep ^warefleet || echo "fleet manager not running (make demo)"

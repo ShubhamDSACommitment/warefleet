@@ -15,8 +15,10 @@ Backend analogy: this is the protocol adapter between the two buses — DDS on
 the robot side, MQTT on the fleet side — like a Kafka Connect connector.
 Heartbeats go out QoS 0 (lossy is fine at 1 Hz), orders/assignments QoS 1.
 
-Scope: single robot for now (assignments for any robot are forwarded to the
-one global ROS topic). Week 3+ adds per-robot ROS namespaces and PathPlan.
+Multi-robot: the `robots` parameter lists the fleet's robot names. Convention:
+a robot's ROS namespace equals its robot_id — except the legacy single-robot
+name 'robot_0', which runs unnamespaced (Phase 1/2 compatibility). Assignments
+are routed to /<robot_id>/warefleet/tasks by the robot_id in the message.
 """
 import json
 import threading
@@ -32,20 +34,31 @@ ASSIGNMENT_TOPIC = 'warefleet/robots/+/assignment'
 STATE_TOPIC = 'warefleet/robots/{robot_id}/state'
 
 
+def _ns_prefix(robot_id: str) -> str:
+    return '' if robot_id == 'robot_0' else f'/{robot_id}/'
+
+
 class MqttBridge(Node):
     def __init__(self):
         super().__init__('warefleet_mqtt_bridge')
         self.declare_parameter('broker_host', 'localhost')
         self.declare_parameter('broker_port', 1883)
+        self.declare_parameter('robots', ['robot_0'])
         host = self.get_parameter('broker_host').value
         port = self.get_parameter('broker_port').value
+        robots = self.get_parameter('robots').value
 
         self._tasks = {}  # task_id -> order JSON dict, filled from ORDERS_TOPIC
         self._lock = threading.Lock()
 
-        # ROS side
-        self.task_pub = self.create_publisher(Task, 'warefleet/tasks', 10)
-        self.create_subscription(RobotState, 'warefleet/robot_state', self._on_robot_state, 10)
+        # ROS side: one task publisher + one state subscription per robot
+        self.task_pubs = {}
+        for r in robots:
+            ns = _ns_prefix(r)
+            self.task_pubs[r] = self.create_publisher(Task, f'{ns}warefleet/tasks', 10)
+            self.create_subscription(
+                RobotState, f'{ns}warefleet/robot_state', self._on_robot_state, 10)
+        self.get_logger().info(f'bridging robots: {robots}')
 
         # MQTT side (paho runs its own network thread via loop_start)
         self.mq = mqtt.Client(client_id='warefleet-ros-bridge')
@@ -76,6 +89,13 @@ class MqttBridge(Node):
 
     def _dispatch_assignment(self, assignment):
         task_id = assignment.get('task_id', '')
+        robot_id = assignment.get('robot_id', '')
+        pub = self.task_pubs.get(robot_id)
+        if pub is None:
+            self.get_logger().error(
+                f'assignment {task_id} for unknown robot {robot_id!r} '
+                f'(bridge knows: {list(self.task_pubs)})')
+            return
         with self._lock:
             order = self._tasks.get(task_id)
         if order is None:
@@ -90,9 +110,8 @@ class MqttBridge(Node):
         t.dropoff.y = float(order['dropoff']['y'])
         t.priority = int(order.get('priority', 0))
         t.created_at = self.get_clock().now().to_msg()
-        self.task_pub.publish(t)
-        self.get_logger().info(
-            f'assignment {task_id} -> robot {assignment.get("robot_id", "?")}: dispatched to ROS')
+        pub.publish(t)
+        self.get_logger().info(f'assignment {task_id} -> robot {robot_id}: dispatched to ROS')
 
     # ---------- ROS -> MQTT ----------
 

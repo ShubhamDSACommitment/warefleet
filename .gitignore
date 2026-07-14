@@ -34,3 +34,4 @@ CLAUDE.md
 *.bag
 *.mcap
 rosbag2_*/
+.logs/

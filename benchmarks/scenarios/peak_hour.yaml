@@ -1,0 +1,26 @@
+# A reproducible "peak hour" order stream. Fixed seed => comparable runs.
+# Each order enters the system at `t` seconds; after the last explicit order the
+# feeder keeps generating from `seed` (exponential inter-arrivals, mean
+# `mean_interval_s`) until `duration_s` — lifelong operation.
+#
+# Station coordinates are in the Nav2 MAP frame of warefleet_bringup's
+# warehouse (map ~= world shifted by the spawn pose (+2.0, +0.5)).
+# All stations verified reachable: open floor, clear of racks and staging.
+name: peak_hour
+seed: 42
+duration_s: 600
+mean_interval_s: 45
+stations:
+  pick:
+    - {id: P1, x: 4.0,  y: 0.5}    # dock apron (east)
+    - {id: P2, x: -2.0, y: 2.5}    # north-west, above rack A
+    - {id: P3, x: -2.0, y: -1.5}   # south-west floor
+  drop:
+    - {id: D1, x: 4.5,  y: -2.5}   # south-east corner
+    - {id: D2, x: 0.5,  y: -0.5}   # central floor, west of rack B
+    - {id: D3, x: 6.5,  y: 2.0}    # north-east, past the dock
+orders:
+  - {t: 0,  kind: transport, pickup: P1, dropoff: D1, priority: 1}
+  - {t: 5,  kind: transport, pickup: P2, dropoff: D2, priority: 1}
+  - {t: 10, kind: transport, pickup: P3, dropoff: D3, priority: 2}
+  # ...continued from `seed` by the feeder until duration_s.

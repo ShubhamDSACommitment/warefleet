@@ -1,7 +1,6 @@
 package allocation
 
 import (
-	"sort"
 	"time"
 
 	"github.com/yourname/warefleet/fleet_manager/internal/model"
@@ -15,13 +14,7 @@ func (g *Greedy) Name() string { return "greedy" }
 
 func (g *Greedy) Assign(tasks []model.Task, robots []model.Robot) []model.Assignment {
 	free := availableRobots(robots)
-	// Highest priority, then oldest, first.
-	sort.SliceStable(tasks, func(i, j int) bool {
-		if tasks[i].Priority != tasks[j].Priority {
-			return tasks[i].Priority > tasks[j].Priority
-		}
-		return tasks[i].CreatedAt.Before(tasks[j].CreatedAt)
-	})
+	tasks = sortedTasks(tasks) // highest priority, then oldest, first
 
 	used := make(map[string]bool)
 	assignments := make([]model.Assignment, 0, len(tasks))

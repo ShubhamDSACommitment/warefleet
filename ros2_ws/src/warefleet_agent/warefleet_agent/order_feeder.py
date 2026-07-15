@@ -73,6 +73,10 @@ def main(argv=None):
     parser.add_argument('--limit', type=int, default=0, help='stop after N orders (0 = full scenario)')
     parser.add_argument('--broker', default='localhost', help='MQTT broker host')
     parser.add_argument('--port', type=int, default=1883)
+    parser.add_argument('--dump', default=None, metavar='FILE',
+                        help='write the schedule as JSON and exit (no MQTT). '
+                             'This is the shared input for the idealized tier '
+                             '(gridsim) — one schedule, two simulators.')
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     sc, stations = load_scenario(args.scenario)
@@ -81,6 +85,12 @@ def main(argv=None):
     schedule += list(generated_orders(sc, stations, last_t, len(schedule)))
     if args.limit:
         schedule = schedule[:args.limit]
+
+    if args.dump:
+        with open(args.dump, 'w') as f:
+            json.dump([dict(order, t=t) for t, order in schedule], f, indent=1)
+        print(f'[order_feeder] schedule ({len(schedule)} orders) -> {args.dump}')
+        return
 
     mq = mqtt.Client(client_id='warefleet-order-feeder')
     mq.connect(args.broker, args.port, keepalive=30)

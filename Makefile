@@ -3,6 +3,7 @@
 
 ROBOTS ?= 1
 ROBOT ?= robot_0
+ALLOC ?= greedy
 SCENARIO ?= benchmarks/scenarios/peak_hour.yaml
 LIMIT ?= 0
 
@@ -32,10 +33,10 @@ help:
 # ---- the one-command flow ---------------------------------------------------
 
 demo:
-	@ROBOTS=$(ROBOTS) bash scripts/demo.sh
+	@ROBOTS=$(ROBOTS) WAREFLEET_ALLOCATION=$(ALLOC) bash scripts/demo.sh
 
 demo-headless:
-	@ROBOTS=$(ROBOTS) bash scripts/demo.sh --headless
+	@ROBOTS=$(ROBOTS) WAREFLEET_ALLOCATION=$(ALLOC) bash scripts/demo.sh --headless
 
 stop:
 	@bash scripts/stop.sh
@@ -79,8 +80,10 @@ build-ros:
 sim:
 	@bash -c '$(ROS_ENV) && ros2 launch warefleet_bringup single_robot.launch.py'
 
+TIER ?= realistic
+
 bench:
-	python3 benchmarks/run_benchmarks.py --scenarios benchmarks/scenarios --out benchmarks/results
+	python3 benchmarks/run_benchmarks.py --tier $(TIER) --robots $(ROBOTS) --strategies greedy,hungarian,auction
 
 fmt:
 	cd fleet_manager && gofmt -w .

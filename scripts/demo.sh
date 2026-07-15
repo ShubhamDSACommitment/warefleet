@@ -143,6 +143,8 @@ start bridge ros2 run warefleet_agent mqtt_bridge --ros-args -p robots:="$robots
 
 # --- 6. fleet manager ----------------------------------------------------------
 (cd "$ROOT/fleet_manager" && go build -o bin/fleet-manager ./cmd/fleet-manager) || exit 1
+export WAREFLEET_ALLOCATION="${WAREFLEET_ALLOCATION:-greedy}"
+echo "[demo] allocation strategy: $WAREFLEET_ALLOCATION"
 start fleet-manager "$ROOT/fleet_manager/bin/fleet-manager"
 
 echo

@@ -77,9 +77,15 @@ def main(argv=None):
                         help='write the schedule as JSON and exit (no MQTT). '
                              'This is the shared input for the idealized tier '
                              '(gridsim) — one schedule, two simulators.')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='override the scenario seed (benchmark repetitions '
+                             'use seed+i so each repeat is a fresh order stream '
+                             'from the same distribution)')
     args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     sc, stations = load_scenario(args.scenario)
+    if args.seed is not None:
+        sc['seed'] = args.seed
     schedule = list(explicit_orders(sc, stations))
     last_t = schedule[-1][0] if schedule else 0.0
     schedule += list(generated_orders(sc, stations, last_t, len(schedule)))

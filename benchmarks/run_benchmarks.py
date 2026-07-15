@@ -73,14 +73,17 @@ def revive_robot(name: str):
                    capture_output=True)
 
 
-def dump_schedule(scenario: str, orders: int) -> Path:
-    """One schedule feeds both tiers — that's what makes H1 an honest comparison."""
-    out = ROOT / "benchmarks/results/.schedule.json"
+def dump_schedule(scenario: str, orders: int, seed=None) -> Path:
+    """One schedule feeds both tiers — that's what makes H1 an honest comparison.
+    Repetitions pass seed+i: each repeat is a fresh order stream, same distribution."""
+    suffix = f"_seed{seed}" if seed is not None else ""
+    out = ROOT / f"benchmarks/results/.schedule{suffix}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
+    seed_arg = f" --seed {seed}" if seed is not None else ""
     r = subprocess.run(
         ["bash", "-c",
          f"{ROS_ENV} && ros2 run warefleet_agent order_feeder "
-         f"--scenario {scenario} --limit {orders} --dump {out}"],
+         f"--scenario {scenario} --limit {orders} --dump {out}{seed_arg}"],
         capture_output=True, text=True)
     if r.returncode != 0:
         raise RuntimeError(f"schedule dump failed: {r.stderr[-500:]}")
@@ -120,18 +123,20 @@ def run_one_idealized(schedule: Path, alloc: str, robots: int, orders: int,
 
 
 def run_one(scenario: str, alloc: str, robots: int, orders: int, rate: float,
-            dropout=None) -> dict:
+            dropout=None, seed=None) -> dict:
     """One benchmark run; returns the KPI row."""
     label = f"alloc={alloc} robots={robots} orders={orders}" + (
+        f" seed={seed}" if seed is not None else "") + (
         f" dropout={dropout}" if dropout else "")
     print(f"[bench] ── {label}")
     stop_stack()
     start_stack(robots, alloc)
 
+    seed_arg = f" --seed {seed}" if seed is not None else ""
     feeder = subprocess.Popen(
         ["bash", "-c",
          f"{ROS_ENV} && ros2 run warefleet_agent order_feeder "
-         f"--scenario {scenario} --limit {orders} --rate {rate}"],
+         f"--scenario {scenario} --limit {orders} --rate {rate}{seed_arg}"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     t0 = time.monotonic()
@@ -190,6 +195,36 @@ def run_one(scenario: str, alloc: str, robots: int, orders: int, rate: float,
     return row
 
 
+def aggregate(rows):
+    """Group repeats of the same configuration; report mean ± std."""
+    from statistics import mean, stdev
+
+    def fmt(vals, nd=2):
+        vals = [v for v in vals if v != ""]
+        if not vals:
+            return ""
+        if len(vals) == 1:
+            return f"{vals[0]:.{nd}f}"
+        return f"{mean(vals):.{nd}f} ± {stdev(vals):.{nd}f}"
+
+    groups = {}
+    for r in rows:
+        key = (r.get("tier", "realistic"), r["strategy"], r.get("planner", ""), r["robots"])
+        groups.setdefault(key, []).append(r)
+
+    agg = []
+    for (tier, strategy, planner, robots), g in sorted(groups.items()):
+        agg.append({
+            "tier": tier, "strategy": strategy, "planner": planner, "robots": robots,
+            "runs": len(g),
+            "completed": f"{sum(x['completed'] for x in g)}/{sum(x['orders'] for x in g)}",
+            "throughput": fmt([x["throughput_per_min"] for x in g]),
+            "makespan": fmt([x["makespan_mean_s"] for x in g], nd=1),
+            "recovery": fmt([x["recovery_mean_s"] for x in g], nd=1),
+        })
+    return agg
+
+
 def write_csv(rows, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"bench_{datetime.now():%Y%m%d_%H%M%S}.csv"
@@ -200,25 +235,25 @@ def write_csv(rows, out_dir: Path) -> Path:
     return path
 
 
-def write_results_md(rows, scenario: str, md_path: Path, dropout, tier: str):
+def write_results_md(rows, scenario: str, md_path: Path, dropout, tier: str, repeat: int):
     BEGIN_MARK, END_MARK = bench_marks(tier)
     tier_desc = ("realistic execution (Gazebo + Nav2 + AMCL, RTF≈1)" if tier == "realistic"
-                 else "idealized execution (gridsim: 0.5 m grid, 1 cell/tick, prioritized MAPF)")
+                 else "idealized execution (gridsim: 0.5 m grid, 1 cell/tick)")
     header = (
         f"{BEGIN_MARK}\n"
         f"_Last run: {datetime.now():%Y-%m-%d %H:%M} · scenario `{Path(scenario).name}` "
         f"· {tier_desc}"
+        + (f" · {repeat} repetitions per configuration, each a fresh seeded order stream; "
+           f"values are mean ± std" if repeat > 1 else "")
         + (f" · dropout injected: {dropout[0]} killed at {dropout[1]}s, revived {dropout[2]}s later"
            if dropout else "") + "_\n\n"
-        "| Tier | Strategy | Planner | Robots | Completed | Wall (s) | Throughput (tasks/min) "
-        "| Mean makespan (s) | Recoveries | Mean recovery (s) |\n"
-        "|---|---|---|---|---|---|---|---|---|---|\n")
-    for r in rows:
-        header += (f"| {r.get('tier', 'realistic')} | {r['strategy']} "
-                   f"| {r.get('planner', '')} | {r['robots']} "
-                   f"| {r['completed']}/{r['orders']} "
-                   f"| {r['wall_s']} | {r['throughput_per_min']} | {r['makespan_mean_s']} "
-                   f"| {r['recoveries']} | {r['recovery_mean_s']} |\n")
+        "| Tier | Strategy | Planner | Robots | Runs | Completed | Throughput (tasks/min) "
+        "| Mean makespan (s) | Mean recovery (s) |\n"
+        "|---|---|---|---|---|---|---|---|---|\n")
+    for r in aggregate(rows):
+        header += (f"| {r['tier']} | {r['strategy']} | {r['planner']} | {r['robots']} "
+                   f"| {r['runs']} | {r['completed']} | {r['throughput']} "
+                   f"| {r['makespan']} | {r['recovery']} |\n")
     header += f"\n{END_MARK}"
 
     text = md_path.read_text() if md_path.exists() else "# Results\n"
@@ -242,6 +277,9 @@ def main():
                     help="realistic = Gazebo+Nav2 (slow, small N); idealized = gridsim (fast, any N)")
     ap.add_argument("--planners", default="prioritized",
                     help="idealized tier only: comma-separated (prioritized,pibt)")
+    ap.add_argument("--repeat", type=int, default=1,
+                    help="repetitions per configuration; repeat i uses scenario seed+i "
+                         "(fresh order stream, same distribution) — report mean ± std")
     ap.add_argument("--dropout", default=None,
                     help="NAME:KILL_AFTER_S:REVIVE_AFTER_S — inject one robot dropout per run")
     ap.add_argument("--out", default=str(ROOT / "benchmarks/results"))
@@ -253,33 +291,37 @@ def main():
         name, kill_s, revive_s = args.dropout.split(":")
         dropout = (name, float(kill_s), float(revive_s))
 
+    base_seed = 42  # matches the scenario file; repeat i runs on base_seed + i
+    seeds = [base_seed + i for i in range(args.repeat)]
+
     rows = []
     if args.tier == "idealized":
         subprocess.run(["go", "build", "-o", "bin/gridsim", "./cmd/gridsim"],
                        cwd=ROOT / "fleet_manager", check=True)
-        schedule = dump_schedule(args.scenario, args.orders)
+        schedules = {s: dump_schedule(args.scenario, args.orders, s) for s in seeds}
         for robots in [int(n) for n in args.robots.split(",")]:
             for planner in args.planners.split(","):
                 for alloc in args.strategies.split(","):
-                    rows.append(run_one_idealized(schedule, alloc.strip(), robots,
-                                                  args.orders, args.rate, planner.strip()))
+                    for s in seeds:
+                        rows.append(run_one_idealized(schedules[s], alloc.strip(), robots,
+                                                      args.orders, args.rate, planner.strip()))
     else:
         for robots in [int(n) for n in args.robots.split(",")]:
             for alloc in args.strategies.split(","):
-                rows.append(run_one(args.scenario, alloc.strip(), robots,
-                                    args.orders, args.rate, dropout))
+                for s in seeds:
+                    rows.append(run_one(args.scenario, alloc.strip(), robots,
+                                        args.orders, args.rate, dropout, seed=s))
 
     csv_path = write_csv(rows, Path(args.out))
-    write_results_md(rows, args.scenario, Path(args.results_md), dropout, args.tier)
+    write_results_md(rows, args.scenario, Path(args.results_md), dropout, args.tier, args.repeat)
     print(f"\n[bench] CSV: {csv_path}")
     print(f"[bench] table updated in {args.results_md}")
-    print("\n{:<11} {:<12} {:>6} {:>10} {:>8} {:>12} {:>13}".format(
-        "strategy", "planner", "robots", "completed", "wall_s", "tasks/min", "makespan_s"))
-    for r in rows:
-        print("{:<11} {:<12} {:>6} {:>10} {:>8} {:>12} {:>13}".format(
-            r["strategy"], r.get("planner", ""), r["robots"],
-            f"{r['completed']}/{r['orders']}",
-            r["wall_s"], r["throughput_per_min"], r["makespan_mean_s"]))
+    print("\n{:<11} {:<12} {:>6} {:>5} {:>12} {:>18} {:>16}".format(
+        "strategy", "planner", "robots", "runs", "completed", "tasks/min", "makespan_s"))
+    for r in aggregate(rows):
+        print("{:<11} {:<12} {:>6} {:>5} {:>12} {:>18} {:>16}".format(
+            r["strategy"], r["planner"], r["robots"], r["runs"],
+            r["completed"], r["throughput"], r["makespan"]))
 
 
 if __name__ == "__main__":

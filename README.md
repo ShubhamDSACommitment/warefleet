@@ -92,6 +92,28 @@ Benchmark comparing allocation × coordination strategies on the same warehouse 
 | Hungarian | Prioritized | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
 | Auction | CBS/PIBT | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
 
+> Current measured results (both tiers, mean ± std over seeded order streams): [`docs/results.md`](docs/results.md).
+
+## Portable development — no ROS required (idealized tier)
+
+The **idealized tier is pure Go + stdlib Python** and runs on any machine
+(macOS included) — only the realistic tier (Gazebo + Nav2) needs the Ubuntu/ROS box.
+
+```bash
+git clone https://github.com/ShubhamDSACommitment/warefleet && cd warefleet
+# prerequisites: Go 1.22+ and Python 3 with PyYAML
+#   macOS:  brew install go python3 && pip3 install pyyaml
+cd fleet_manager && go test ./... && cd ..              # all unit tests (allocators, A*, PIBT)
+python3 benchmarks/run_benchmarks.py --tier idealized \
+  --robots 2,8,24 --orders 19 --rate 4 \
+  --planners prioritized,pibt --repeat 5                # full benchmark matrix in seconds
+```
+
+Everything strategy/planner-related (greedy, Hungarian, auction, space-time A*,
+prioritized planning, PIBT, gridsim, the benchmark harness, `docs/results.md`)
+is developable and testable this way. Gazebo verification of changes waits for
+the ROS machine.
+
 ## Design decisions
 
 Why Go for the coordinator, why a separate MAPF layer, centralized vs. decentralized trade-offs, message schema choices — [`docs/design-decisions.md`](docs/design-decisions.md).

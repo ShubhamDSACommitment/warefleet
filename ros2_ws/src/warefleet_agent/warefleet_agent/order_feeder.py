@@ -13,7 +13,9 @@ Usage:
     # useful flags: --rate 2.0 (2x speed)  --limit 5 (stop after 5 orders)
 
 Plain MQTT publisher on purpose — no rclpy: the feeder is fleet-side load
-generation (think k6/JMeter), not a robot component.
+generation (think k6/JMeter), not a robot component. It also runs entirely
+outside ROS (`python3 order_feeder.py ...`), and `--dump` needs only PyYAML —
+that keeps the idealized benchmark tier fully portable (e.g. macOS laptop).
 """
 import argparse
 import json
@@ -21,7 +23,6 @@ import random
 import sys
 import time
 
-import paho.mqtt.client as mqtt
 import yaml
 
 ORDERS_TOPIC = 'warefleet/orders'
@@ -98,6 +99,7 @@ def main(argv=None):
         print(f'[order_feeder] schedule ({len(schedule)} orders) -> {args.dump}')
         return
 
+    import paho.mqtt.client as mqtt  # lazy: only the publish path needs a broker
     mq = mqtt.Client(client_id='warefleet-order-feeder')
     mq.connect(args.broker, args.port, keepalive=30)
     mq.loop_start()

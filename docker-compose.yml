@@ -1,0 +1,54 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: warefleet-mqtt
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # MQTT over WebSockets
+    volumes:
+      - ./monitoring/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  fleet-manager:
+    build: ./fleet_manager
+    container_name: warefleet-fleet-manager
+    depends_on:
+      - mqtt
+    environment:
+      - WAREFLEET_MQTT_BROKER=tcp://mqtt:1883
+      - WAREFLEET_ALLOCATION=greedy        # greedy | hungarian | auction
+      - WAREFLEET_COORDINATION=prioritized # prioritized | cbs | pibt | lacam
+      - WAREFLEET_METRICS_ADDR=:2112       # Prometheus scrape endpoint
+    ports:
+      - "2112:2112"   # /metrics
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: warefleet-prometheus
+    depends_on:
+      - fleet-manager
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: warefleet-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    restart: unless-stopped
+
+# Note: the ROS 2 + Gazebo simulation runs on the host (needs GPU/display).
+# See ros2_ws/README.md. `docker compose up` brings up the coordination + observability plane.

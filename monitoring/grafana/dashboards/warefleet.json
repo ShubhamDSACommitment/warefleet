@@ -1,0 +1,49 @@
+{
+  "title": "WareFleet — Fleet KPIs",
+  "uid": "warefleet-kpis",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Tasks completed",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "warefleet_tasks_completed_total", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Throughput (tasks/min)",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "rate(warefleet_tasks_completed_total[1m]) * 60", "refId": "A" }]
+    },
+    {
+      "type": "gauge",
+      "title": "Robots active",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "warefleet_robots_active", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Robots offline",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "warefleet_robots_offline", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Task makespan (p50/p95)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        { "expr": "histogram_quantile(0.5, rate(warefleet_task_makespan_seconds_bucket[5m]))", "refId": "A", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, rate(warefleet_task_makespan_seconds_bucket[5m]))", "refId": "B", "legendFormat": "p95" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Path conflicts / min",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [{ "expr": "rate(warefleet_path_conflicts_total[1m]) * 60", "refId": "A" }]
+    }
+  ]
+}
